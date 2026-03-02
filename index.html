@@ -13,6 +13,9 @@
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 
     <style>
+        :root {
+            --browser-bottom-offset: 0px;
+        }
         html, body {
             height: 100%;
         }
@@ -21,6 +24,7 @@
             overflow: hidden;
             background-color: #f3f4f6;
             transition: background-color 0.8s ease;
+            min-height: 100svh;
             min-height: 100dvh;
         }
         .handwriting {
@@ -64,12 +68,19 @@
             background: rgba(17, 24, 39, 0.92);
         }
         #ui-controls {
-            bottom: 0;
-            padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 0.5rem);
+            position: fixed !important;
+            left: 0;
+            right: 0;
+            bottom: calc(var(--browser-bottom-offset) + env(safe-area-inset-bottom, 0px) + 0.5rem) !important;
+            padding-bottom: 0;
+        }
+        #board {
+            padding-bottom: calc(5rem + var(--browser-bottom-offset) + env(safe-area-inset-bottom, 0px));
         }
         #step1,
         #step2,
         #result-overlay {
+            min-height: 100svh;
             min-height: 100dvh;
         }
         ::-webkit-scrollbar {
@@ -132,6 +143,17 @@
         let isGeneratingReport = false;
         let lastRotation = 0;
 
+        function updateBottomControlsOffset() {
+            const vv = window.visualViewport;
+            let browserOffset = 0;
+
+            if (vv) {
+                browserOffset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+            }
+
+            document.documentElement.style.setProperty('--browser-bottom-offset', `${Math.round(browserOffset)}px`);
+        }
+
         function pickRandomColor(excludedHex = '') {
             const candidates = colors.filter(color => color.hex !== excludedHex);
             const pool = candidates.length > 0 ? candidates : colors;
@@ -143,6 +165,14 @@
             document.body.style.backgroundColor = colorObj.hex;
             document.getElementById('color-name').innerText = colorObj.name;
         }
+
+        window.addEventListener('resize', updateBottomControlsOffset);
+        window.addEventListener('orientationchange', updateBottomControlsOffset);
+        if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', updateBottomControlsOffset);
+            window.visualViewport.addEventListener('scroll', updateBottomControlsOffset);
+        }
+        updateBottomControlsOffset();
 
         function getDistinctRandomRotation() {
             const min = -18;
