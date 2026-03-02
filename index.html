@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Color Walk</title>
+    <meta name="description" content="选择今日主题色，只拍这个颜色为主角的街拍。" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header class="hero">
+        <p class="kicker">COLOR WALK</p>
+        <h1>今天，只拍一种颜色</h1>
+        <p class="subtitle">出门前锁定主题色，街拍里只能让它做主角。</p>
+      </header>
+
+      <section class="card">
+        <div class="card-title-row">
+          <h2>1) 选择今日颜色</h2>
+          <span id="todayText" class="chip chip-muted"></span>
+        </div>
+        <div class="color-picker-row">
+          <input id="colorInput" type="color" value="#ff6f3c" aria-label="今日颜色" />
+          <div id="targetColorPreview" class="target-preview">
+            <span class="dot" id="targetColorDot"></span>
+            <span id="targetColorHex">#ff6f3c</span>
+          </div>
+        </div>
+        <div id="quickColors" class="quick-colors"></div>
+        <button id="lockColorBtn" class="btn btn-primary">锁定今天颜色</button>
+        <p id="lockHint" class="hint"></p>
+      </section>
+
+      <section class="card">
+        <h2>2) 拍照上传</h2>
+        <p class="hint">系统会检测照片中目标色占比，只有通过才会进入今日街拍墙。</p>
+        <input id="photoInput" type="file" accept="image/*" capture="environment" hidden />
+        <button id="captureBtn" class="btn btn-accent" disabled>拍一张 / 选一张</button>
+        <div id="analysisResult" class="analysis-result"></div>
+      </section>
+
+      <section class="card">
+        <div class="card-title-row">
+          <h2>3) 今日街拍墙</h2>
+          <span id="photoCount" class="chip">0 张</span>
+        </div>
+        <div id="gallery" class="gallery"></div>
+      </section>
+
+      <section class="card card-small">
+        <button id="resetBtn" class="btn btn-ghost">重置今天（调试）</button>
+      </section>
+    </main>
+
+    <script src="./app.js" defer></script>
+  </body>
+</html>
