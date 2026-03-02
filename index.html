@@ -108,10 +108,11 @@
         <div id="board" class="flex-1 relative w-full overflow-hidden"></div>
 
         <div id="ui-controls" class="absolute bottom-4 left-0 w-full grid grid-cols-3 items-center px-3 sm:px-8 gap-2 sm:gap-3 z-30">
-            <label class="bg-white text-gray-900 w-full h-12 sm:h-16 rounded-full flex items-center justify-center shadow-2xl cursor-pointer active:scale-90 transition-transform">
-                <span class="text-2xl">📷</span>
-                <input type="file" accept="image/*" capture="environment" id="camera-input" class="hidden">
-            </label>
+            <button id="open-photo-picker" type="button" class="bg-white text-gray-900 w-full h-12 sm:h-16 rounded-full flex items-center justify-center shadow-2xl active:scale-90 transition-transform">
+                <span class="text-sm sm:text-2xl font-bold">CAM</span>
+            </button>
+            <input type="file" accept="image/*" capture="environment" id="camera-input" class="hidden">
+            <input type="file" accept="image/*" id="gallery-input" class="hidden">
 
             <button id="redraw-btn" class="bg-white text-gray-900 w-full h-12 sm:h-16 px-2 sm:px-5 py-2 sm:py-3 rounded-full font-bold text-xs sm:text-base shadow-2xl active:scale-90 transition-transform">
                 重新抽色 🎲
@@ -120,6 +121,14 @@
             <button id="finish-btn" class="bg-white text-gray-900 w-full h-12 sm:h-16 px-2 sm:px-6 py-2 sm:py-4 rounded-full font-bold text-xs sm:text-base shadow-2xl active:scale-90 transition-transform">
                 生成报告 ✨
             </button>
+        </div>
+
+        <div id="photo-action-sheet" class="hidden absolute inset-0 z-40 items-end justify-center p-4 bg-black/35">
+            <div class="w-full max-w-sm bg-white rounded-2xl p-3 shadow-2xl">
+                <button id="choose-camera" type="button" class="w-full py-3 rounded-xl text-gray-900 font-bold active:scale-[0.99] transition-transform bg-gray-100">Take Photo</button>
+                <button id="choose-gallery" type="button" class="w-full mt-2 py-3 rounded-xl text-gray-900 font-bold active:scale-[0.99] transition-transform bg-gray-100">Choose from Library</button>
+                <button id="close-photo-sheet" type="button" class="w-full mt-2 py-3 rounded-xl text-gray-600 font-bold active:scale-[0.99] transition-transform">Cancel</button>
+            </div>
         </div>
     </div>
 
@@ -225,7 +234,21 @@
             gsap.fromTo('#header-info', { opacity: 0.55, y: -8 }, { opacity: 1, y: 0, duration: 0.35 });
         });
 
-        document.getElementById('camera-input').addEventListener('change', function (e) {
+        const cameraInput = document.getElementById('camera-input');
+        const galleryInput = document.getElementById('gallery-input');
+        const photoActionSheet = document.getElementById('photo-action-sheet');
+
+        function openPhotoActionSheet() {
+            photoActionSheet.classList.remove('hidden');
+            photoActionSheet.classList.add('flex');
+        }
+
+        function closePhotoActionSheet() {
+            photoActionSheet.classList.remove('flex');
+            photoActionSheet.classList.add('hidden');
+        }
+
+        function handlePhotoFileInput(e) {
             const file = e.target.files[0];
             if (!file) return;
 
@@ -235,7 +258,24 @@
             };
             reader.readAsDataURL(file);
             e.target.value = '';
+        }
+
+        document.getElementById('open-photo-picker').addEventListener('click', openPhotoActionSheet);
+        document.getElementById('choose-camera').addEventListener('click', () => {
+            closePhotoActionSheet();
+            cameraInput.click();
         });
+        document.getElementById('choose-gallery').addEventListener('click', () => {
+            closePhotoActionSheet();
+            galleryInput.click();
+        });
+        document.getElementById('close-photo-sheet').addEventListener('click', closePhotoActionSheet);
+        photoActionSheet.addEventListener('click', (event) => {
+            if (event.target === photoActionSheet) closePhotoActionSheet();
+        });
+
+        cameraInput.addEventListener('change', handlePhotoFileInput);
+        galleryInput.addEventListener('change', handlePhotoFileInput);
 
         function createPolaroid(imgSrc) {
             const board = document.getElementById('board');
@@ -364,6 +404,7 @@
             const reportWidth = 1080;
             const padding = 56;
             const topSectionHeight = 260;
+            const footerHeight = 96;
             const cardGap = 28;
             const cardWidth = (reportWidth - padding * 2 - cardGap) / 2;
             const imagePadding = 18;
@@ -396,7 +437,7 @@
             const masonryBottom = placements.length > 0
                 ? Math.max(columnHeights[0], columnHeights[1]) - cardGap
                 : topSectionHeight;
-            const reportHeight = Math.max(topSectionHeight + padding, masonryBottom + padding);
+            const reportHeight = Math.max(topSectionHeight + padding, masonryBottom + padding) + footerHeight;
 
             const canvas = document.createElement('canvas');
             canvas.width = reportWidth;
@@ -404,11 +445,7 @@
             const ctx = canvas.getContext('2d');
 
             const baseHex = currentColor?.hex || '#4ECDC4';
-            const bgGradient = ctx.createLinearGradient(0, 0, 0, reportHeight);
-            bgGradient.addColorStop(0, '#FFFFFF');
-            bgGradient.addColorStop(0.45, rgba(baseHex, 0.2));
-            bgGradient.addColorStop(1, rgba(baseHex, 0.34));
-            ctx.fillStyle = bgGradient;
+            ctx.fillStyle = '#FFFFFF';
             ctx.fillRect(0, 0, reportWidth, reportHeight);
 
             ctx.fillStyle = 'rgba(255,255,255,0.75)';
@@ -452,6 +489,12 @@
                 ctx.drawImage(card.img, card.imageX, card.imageY, card.imageW, card.imageH);
                 ctx.restore();
             });
+
+            ctx.fillStyle = '#6B7280';
+            ctx.font = '600 30px "Nunito", sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('colorwalk.netlify.app', reportWidth / 2, reportHeight - 34);
+            ctx.textAlign = 'left';
 
             return canvas.toDataURL('image/jpeg', 0.93);
         }
