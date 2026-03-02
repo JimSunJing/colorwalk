@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <!-- 移动端适配，禁止用户缩放，增强 App 体验 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Color Walk 🎨</title>
+    
+    <!-- 引入 Tailwind CSS 快速写样式 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入有趣的字体 -->
+    <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@600&family=Nunito:wght@400;700&display=swap" rel="stylesheet">
+    
+    <!-- 引入所需要的 JS 库 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script> <!-- 动效 -->
+    <script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script> <!-- 拖拽手势 -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script> <!-- 撒花 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script> <!-- 截图 -->
+
+    <style>
+        body {
+            font-family: 'Nunito', sans-serif;
+            overflow: hidden; /* 防止原生滚动 */
+            background-color: #f3f4f6;
+            transition: background-color 0.8s ease;
+        }
+        .handwriting {
+            font-family: 'Caveat', cursive;
+        }
+        /* 拍立得样式 */
+        .polaroid {
+            background: white;
+            padding: 10px 10px 40px 10px;
+            box-shadow: 0 10px 20px -5px rgba(0,0,0,0.15);
+            position: absolute;
+            touch-action: none; /* 必须：防止拖拽时触发页面滚动 */
+            width: 200px;
+            transform-origin: center center;
+            border-radius: 4px;
+        }
+        .polaroid img {
+            width: 100%;
+            height: 180px;
+            object-fit: cover;
+            border-radius: 2px;
+            background: #eee;
+        }
+        /* 隐藏滚动条 */
+        ::-webkit-scrollbar { display: none; }
+    </style>
+</head>
+<body class="h-screen w-screen relative">
+
+    <!-- ========== 阶段 1：抽色界面 ========== -->
+    <div id="step1" class="absolute inset-0 flex flex-col items-center justify-center z-50 bg-white">
+        <h1 class="text-5xl font-bold mb-4 handwriting text-gray-800">Color Walk</h1>
+        <p class="text-gray-500 mb-12 text-center px-8">漫步城市，<br>用镜头捕捉属于今天的色彩。</p>
+        
+        <button id="draw-btn" class="bg-gray-900 text-white px-8 py-4 rounded-full font-bold text-lg shadow-xl active:scale-95 transition-transform">
+            抽取今日主题色 🎲
+        </button>
+    </div>
+
+    <!-- ========== 阶段 2 & 3：漫步与拼贴界面 ========== -->
+    <div id="step2" class="absolute inset-0 hidden flex-col">
+        
+        <!-- 顶部信息 -->
+        <div id="header-info" class="pt-12 pb-4 px-6 text-center z-20">
+            <h2 class="text-3xl font-bold text-white drop-shadow-md">Today's Color</h2>
+            <p id="color-name" class="handwriting text-2xl text-white mt-2 drop-shadow-md">... </p>
+        </div>
+
+        <!-- 拼贴画板区 (需要被截图的区域) -->
+        <div id="board" class="flex-1 relative w-full overflow-hidden">
+            <!-- 照片将通过 JS 动态插入到这里 -->
+        </div>
+
+        <!-- 底部操作按钮 (UI层面，截图时不包含) -->
+        <div id="ui-controls" class="absolute bottom-8 left-0 w-full flex justify-between px-8 z-30">
+            <!-- 拍照/上传按钮 (隐藏真实input，用label伪装) -->
+            <label class="bg-white text-gray-900 w-16 h-16 rounded-full flex items-center justify-center shadow-2xl cursor-pointer active:scale-90 transition-transform">
+                <span class="text-2xl">📸</span>
+                <input type="file" accept="image/*" capture="environment" id="camera-input" class="hidden">
+            </label>
+
+            <!-- 生成报告按钮 -->
+            <button id="finish-btn" class="bg-white text-gray-900 px-6 py-4 rounded-full font-bold shadow-2xl active:scale-90 transition-transform">
+                生成报告 ✨
+            </button>
+        </div>
+    </div>
+
+    <!-- 生成结果展示遮罩 -->
+    <div id="result-overlay" class="absolute inset-0 bg-black/80 z-[100] hidden flex-col items-center justify-center p-6">
+        <p class="text-white text-lg mb-4 handwriting">长按保存你的 Color Walk 日记 📸</p>
+        <img id="result-img" class="max-w-full max-h-[70vh] rounded-lg shadow-2xl" src="" alt="Report">
+        <button onclick="location.reload()" class="mt-8 text-white bg-white/20 px-6 py-2 rounded-full border border-white">再玩一次</button>
+    </div>
+
+    <script>
+        // --- 预设的一些有趣颜色 ---
+        const colors =[
+            { hex: '#FFB347', name: '橘子汽水 🍊' },
+            { hex: '#4ECDC4', name: '薄荷碎冰 🍃' },
+            { hex: '#FF6B6B', name: '落日玫瑰 🌹' },
+            { hex: '#FFE66D', name: '向日葵黄 🌻' },
+            { hex: '#3B82F6', name: '克莱因蓝 🌊' }
+        ];
+
+        let zIndexCounter = 10; // 用于保证拖拽的照片总是在最上层
+
+        // --- 1. 抽色逻辑 ---
+        document.getElementById('draw-btn').addEventListener('click', () => {
+            const btn = document.getElementById('draw-btn');
+            
+            // 按钮点击动效
+            gsap.to(btn, { scale: 0.9, duration: 0.1, yoyo: true, repeat: 1 });
+
+            // 随机选个颜色
+            const todayColor = colors[Math.floor(Math.random() * colors.length)];
+            
+            setTimeout(() => {
+                // 页面转场动效
+                gsap.to('#step1', {
+                    y: '-100%', 
+                    opacity: 0, 
+                    duration: 0.8, 
+                    ease: "power3.inOut",
+                    onComplete: () => {
+                        document.getElementById('step1').classList.add('hidden');
+                        document.getElementById('step2').classList.remove('hidden');
+                        document.getElementById('step2').classList.add('flex');
+                    }
+                });
+
+                // 改变背景色
+                document.body.style.backgroundColor = todayColor.hex;
+                document.getElementById('color-name').innerText = todayColor.name;
+                
+                // 顶部文字淡入
+                gsap.fromTo('#header-info', { opacity: 0, y: -20 }, { opacity: 1, y: 0, duration: 1, delay: 0.5 });
+            }, 300);
+        });
+
+        // --- 2. 拍照/上传逻辑 ---
+        document.getElementById('camera-input').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            // 读取文件为 Data URL
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const imgUrl = event.target.result;
+                createPolaroid(imgUrl);
+            };
+            reader.readAsDataURL(file);
+            
+            // 清空 input 方便下次传同名文件
+            e.target.value = ''; 
+        });
+
+        function createPolaroid(imgSrc) {
+            const board = document.getElementById('board');
+            
+            // 创建 DOM 元素
+            const div = document.createElement('div');
+            div.className = 'polaroid';
+            
+            // 随机初始位置和角度，使其有一种随意的“手账感”
+            const randomX = Math.random() * (window.innerWidth - 220) + 10;
+            const randomY = Math.random() * (window.innerHeight / 2) + 50;
+            const randomRot = (Math.random() - 0.5) * 30; // -15 到 15 度
+            
+            // 初始化 dataset，供 interact.js 使用
+            div.setAttribute('data-x', randomX);
+            div.setAttribute('data-y', randomY);
+            div.setAttribute('data-rot', randomRot);
+            
+            div.style.transform = `translate(${randomX}px, ${randomY}px) rotate(${randomRot}deg)`;
+            div.style.zIndex = zIndexCounter++;
+
+            // 当前时间作为拍立得底部的记录
+            const timeStr = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+
+            div.innerHTML = `
+                <img src="${imgSrc}" alt="snap">
+                <div class="handwriting text-gray-700 text-xl text-center mt-3">${timeStr}</div>
+            `;
+            
+            board.appendChild(div);
+
+            // 进场动效 (像牌一样飞入)
+            gsap.from(div, {
+                scale: 0,
+                opacity: 0,
+                rotation: randomRot - 45,
+                duration: 0.6,
+                ease: "back.out(1.5)"
+            });
+        }
+
+        // --- 3. 拖拽手势交互 (Interact.js) ---
+        interact('.polaroid').draggable({
+            inertia: true, // 惯性滑动
+            modifiers:[
+                interact.modifiers.restrictRect({
+                    restriction: 'parent',
+                    endOnly: true
+                })
+            ],
+            listeners: {
+                start(event) {
+                    // 点击拖拽时，提升层级到最前面
+                    event.target.style.zIndex = zIndexCounter++;
+                },
+                move(event) {
+                    const target = event.target;
+                    
+                    // 读取已有的位置
+                    const x = (parseFloat(target.getAttribute('data-x')) || 0) + event.dx;
+                    const y = (parseFloat(target.getAttribute('data-y')) || 0) + event.dy;
+                    const rot = target.getAttribute('data-rot') || 0;
+
+                    // 应用新位置
+                    target.style.transform = `translate(${x}px, ${y}px) rotate(${rot}deg)`;
+
+                    // 保存新位置
+                    target.setAttribute('data-x', x);
+                    target.setAttribute('data-y', y);
+                }
+            }
+        });
+
+        // --- 4. 生成报告 (截图 + 撒花) ---
+        document.getElementById('finish-btn').addEventListener('click', () => {
+            const boardCount = document.getElementById('board').children.length;
+            if(boardCount === 0) {
+                alert("先拍几张照片吧！📸");
+                return;
+            }
+
+            // 隐藏不需要截图的 UI 控件
+            document.getElementById('ui-controls').style.display = 'none';
+
+            // 撒花！情绪价值拉满
+            confetti({
+                particleCount: 100,
+                spread: 70,
+                origin: { y: 0.6 }
+            });
+
+            // 给一点点延迟让页面渲染干净，然后截图
+            setTimeout(() => {
+                const targetArea = document.getElementById('step2'); // 截取整个第二屏
+                
+                html2canvas(targetArea, {
+                    scale: 2, // 提高截图清晰度
+                    backgroundColor: document.body.style.backgroundColor,
+                    useCORS: true
+                }).then(canvas => {
+                    // 恢复 UI 控件
+                    document.getElementById('ui-controls').style.display = 'flex';
+                    
+                    // 将 Canvas 转换为图片并展示在遮罩层
+                    const imgUrl = canvas.toDataURL("image/jpeg", 0.9);
+                    const resultImg = document.getElementById('result-img');
+                    resultImg.src = imgUrl;
+                    
+                    const overlay = document.getElementById('result-overlay');
+                    overlay.classList.remove('hidden');
+                    overlay.classList.add('flex');
+                    
+                    // 遮罩层淡入动效
+                    gsap.from(overlay, { opacity: 0, duration: 0.4 });
+                });
+            }, 500);
+        });
+    </script>
+</body>
+</html>
