@@ -1,30 +1,35 @@
-﻿# Color Walk (Mobile Web MVP)
+# Color Walk (Next.js)
 
-一个移动端网页 App：
-- 每天先锁定一个主题色
-- 仅当照片中该颜色占比足够高时才允许入库
-- 展示今日街拍墙（本地存储）
+Color Walk is a mobile-first color walk web app:
+- Lock one target color per day.
+- Only photos with enough target-color coverage pass validation.
+- Export today's collage as a high-resolution PNG.
 
-## 运行
+## Stack
 
-直接双击 `index.html` 用浏览器打开，或用任意静态服务器：
+- Next.js (App Router)
+- React
+- Three.js (WebGL background)
+- Tailwind CSS
 
-```powershell
-python -m http.server 8080
+## Run locally
+
+```bash
+npm install
+npm run dev
 ```
 
-然后访问 `http://localhost:8080`。
+Open `http://localhost:3000`.
 
-## 说明
+## Build and start
 
-- 今日数据按日期存在 `localStorage`。
-- 每天会自动重置为新的一天。
-- 颜色检测基于图片像素 Hue 分布（轻量规则，不是 AI 识别）。
-- “重置今天（调试）”按钮可清空当天记录。
+```bash
+npm run build
+npm run start
+```
 
-## 后续可扩展
+## Project structure
 
-- 用户系统与云端存储
-- 历史挑战日历
-- 地图打卡、步数与路线
-- 多人同色挑战
+- `app/page.js`: main page and core logic
+- `app/globals.css`: global styles and Tailwind layers
+- `public/logo.svg`: logo used by UI and export
