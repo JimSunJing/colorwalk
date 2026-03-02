@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Color Walk 📸</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@600&family=Nunito:wght@400;700&display=swap" rel="stylesheet">
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+    <style>
+        body {
+            font-family: 'Nunito', sans-serif;
+            overflow: hidden;
+            background-color: #f3f4f6;
+            transition: background-color 0.8s ease;
+        }
+        .handwriting {
+            font-family: 'Caveat', cursive;
+        }
+        .polaroid {
+            background: white;
+            padding: 10px;
+            box-shadow: 0 10px 20px -5px rgba(0, 0, 0, 0.15);
+            position: absolute;
+            touch-action: none;
+            width: 200px;
+            transform-origin: center center;
+            border-radius: 4px;
+        }
+        .polaroid img {
+            width: 100%;
+            height: 180px;
+            object-fit: cover;
+            border-radius: 2px;
+            background: #eee;
+        }
+        .photo-remove {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            width: 28px;
+            height: 28px;
+            border: none;
+            border-radius: 9999px;
+            background: rgba(17, 24, 39, 0.78);
+            color: #fff;
+            cursor: pointer;
+            font-size: 18px;
+            line-height: 28px;
+            text-align: center;
+            transition: transform 0.15s ease, background-color 0.15s ease;
+        }
+        .photo-remove:active {
+            transform: scale(0.9);
+            background: rgba(17, 24, 39, 0.92);
+        }
+        ::-webkit-scrollbar {
+            display: none;
+        }
+    </style>
+</head>
+<body class="h-screen w-screen relative">
+
+    <div id="step1" class="absolute inset-0 flex flex-col items-center justify-center z-50 bg-white">
+        <h1 class="text-5xl font-bold mb-4 handwriting text-gray-800">Color Walk</h1>
+        <p class="text-gray-500 mb-12 text-center px-8">漫步城市，<br>用镜头捕捉属于今天的色彩。</p>
+
+        <button id="draw-btn" class="bg-gray-900 text-white px-8 py-4 rounded-full font-bold text-lg shadow-xl active:scale-95 transition-transform">
+            抽取今日主题色 🎨
+        </button>
+    </div>
+
+    <div id="step2" class="absolute inset-0 hidden flex-col">
+        <div id="header-info" class="pt-12 pb-4 px-6 text-center z-20">
+            <h2 class="text-3xl font-bold text-white drop-shadow-md">Today's Color</h2>
+            <p id="color-name" class="handwriting text-2xl text-white mt-2 drop-shadow-md">...</p>
+        </div>
+
+        <div id="board" class="flex-1 relative w-full overflow-hidden"></div>
+
+        <div id="ui-controls" class="absolute bottom-4 left-0 w-full grid grid-cols-3 items-center px-3 sm:px-8 gap-2 sm:gap-3 z-30">
+            <label class="bg-white text-gray-900 w-full h-12 sm:h-16 rounded-full flex items-center justify-center shadow-2xl cursor-pointer active:scale-90 transition-transform">
+                <span class="text-2xl">📷</span>
+                <input type="file" accept="image/*" capture="environment" id="camera-input" class="hidden">
+            </label>
+
+            <button id="redraw-btn" class="bg-white text-gray-900 w-full h-12 sm:h-16 px-2 sm:px-5 py-2 sm:py-3 rounded-full font-bold text-xs sm:text-base shadow-2xl active:scale-90 transition-transform">
+                重新抽色 🎲
+            </button>
+
+            <button id="finish-btn" class="bg-white text-gray-900 w-full h-12 sm:h-16 px-2 sm:px-6 py-2 sm:py-4 rounded-full font-bold text-xs sm:text-base shadow-2xl active:scale-90 transition-transform">
+                生成报告 ✨
+            </button>
+        </div>
+    </div>
+
+    <div id="result-overlay" class="absolute inset-0 bg-black/80 z-[100] hidden flex-col items-center justify-center p-6 overflow-y-auto">
+        <p class="text-white text-lg mb-4 handwriting">长按保存你的 Color Walk 日记 📷</p>
+        <img id="result-img" class="max-w-full rounded-lg shadow-2xl" src="" alt="Report">
+        <button onclick="location.reload()" class="mt-8 text-white bg-white/20 px-6 py-2 rounded-full border border-white">再玩一次</button>
+    </div>
+
+    <script>
+        const colors = [
+            { hex: '#FFB347', name: '橘子汽水 🍊' },
+            { hex: '#4ECDC4', name: '薄荷碎冰 🧊' },
+            { hex: '#FF6B6B', name: '落日玫瑰 🌺' },
+            { hex: '#FFE66D', name: '向日葵黄 🌻' },
+            { hex: '#3B82F6', name: '克莱因蓝 🌀' }
+        ];
+
+        let zIndexCounter = 10;
+        let currentColor = null;
+        let isGeneratingReport = false;
+        let lastRotation = 0;
+
+        function pickRandomColor(excludedHex = '') {
+            const candidates = colors.filter(color => color.hex !== excludedHex);
+            const pool = candidates.length > 0 ? candidates : colors;
+            return pool[Math.floor(Math.random() * pool.length)];
+        }
+
+        function applyColorTheme(colorObj) {
+            currentColor = colorObj;
+            document.body.style.backgroundColor = colorObj.hex;
+            document.getElementById('color-name').innerText = colorObj.name;
+        }
+
+        function getDistinctRandomRotation() {
+            const min = -18;
+            const max = 18;
+            let candidate = 0;
+            let attempts = 0;
+
+            do {
+                candidate = min + Math.random() * (max - min);
+                attempts += 1;
+            } while (
+                attempts < 12 &&
+                (Math.abs(candidate - lastRotation) < 6 || Math.abs(candidate) < 2)
+            );
+
+            lastRotation = candidate;
+            return candidate;
+        }
+
+        document.getElementById('draw-btn').addEventListener('click', () => {
+            const btn = document.getElementById('draw-btn');
+            gsap.to(btn, { scale: 0.9, duration: 0.1, yoyo: true, repeat: 1 });
+
+            const todayColor = pickRandomColor();
+
+            setTimeout(() => {
+                gsap.to('#step1', {
+                    y: '-100%',
+                    opacity: 0,
+                    duration: 0.8,
+                    ease: 'power3.inOut',
+                    onComplete: () => {
+                        document.getElementById('step1').classList.add('hidden');
+                        document.getElementById('step2').classList.remove('hidden');
+                        document.getElementById('step2').classList.add('flex');
+                    }
+                });
+
+                applyColorTheme(todayColor);
+                gsap.fromTo('#header-info', { opacity: 0, y: -20 }, { opacity: 1, y: 0, duration: 1, delay: 0.5 });
+            }, 300);
+        });
+
+        document.getElementById('redraw-btn').addEventListener('click', () => {
+            const btn = document.getElementById('redraw-btn');
+            gsap.to(btn, { scale: 0.9, duration: 0.1, yoyo: true, repeat: 1 });
+
+            const nextColor = pickRandomColor(currentColor?.hex || '');
+            applyColorTheme(nextColor);
+            gsap.fromTo('#header-info', { opacity: 0.55, y: -8 }, { opacity: 1, y: 0, duration: 0.35 });
+        });
+
+        document.getElementById('camera-input').addEventListener('change', function (e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function (event) {
+                createPolaroid(event.target.result);
+            };
+            reader.readAsDataURL(file);
+            e.target.value = '';
+        });
+
+        function createPolaroid(imgSrc) {
+            const board = document.getElementById('board');
+            const div = document.createElement('div');
+            div.className = 'polaroid';
+
+            const randomX = Math.random() * (window.innerWidth - 220) + 10;
+            const randomY = Math.random() * (window.innerHeight / 2) + 50;
+            const randomRot = getDistinctRandomRotation();
+
+            div.setAttribute('data-x', randomX);
+            div.setAttribute('data-y', randomY);
+            div.setAttribute('data-rot', randomRot);
+            div.style.transform = `translate(${randomX}px, ${randomY}px) rotate(${randomRot}deg)`;
+            div.style.zIndex = zIndexCounter++;
+            div.innerHTML = `
+                <img src="${imgSrc}" alt="snap">
+                <button class="photo-remove" type="button" aria-label="remove photo">×</button>
+            `;
+
+            board.appendChild(div);
+
+            gsap.from(div, {
+                scale: 0,
+                opacity: 0,
+                rotation: randomRot - 45,
+                duration: 0.6,
+                ease: 'back.out(1.5)'
+            });
+        }
+
+        document.getElementById('board').addEventListener('click', (event) => {
+            const removeButton = event.target.closest('.photo-remove');
+            if (!removeButton) return;
+
+            const photo = removeButton.closest('.polaroid');
+            if (!photo) return;
+
+            event.preventDefault();
+            event.stopPropagation();
+
+            gsap.to(photo, {
+                scale: 0.7,
+                opacity: 0,
+                duration: 0.25,
+                ease: 'power2.in',
+                onComplete: () => photo.remove()
+            });
+        });
+
+        interact('.polaroid').draggable({
+            inertia: true,
+            ignoreFrom: '.photo-remove',
+            modifiers: [
+                interact.modifiers.restrictRect({
+                    restriction: 'parent',
+                    endOnly: true
+                })
+            ],
+            listeners: {
+                start(event) {
+                    event.target.style.zIndex = zIndexCounter++;
+                },
+                move(event) {
+                    const target = event.target;
+                    const x = (parseFloat(target.getAttribute('data-x')) || 0) + event.dx;
+                    const y = (parseFloat(target.getAttribute('data-y')) || 0) + event.dy;
+                    const rot = parseFloat(target.getAttribute('data-rot')) || 0;
+
+                    target.style.transform = `translate(${x}px, ${y}px) rotate(${rot}deg)`;
+                    target.setAttribute('data-x', x);
+                    target.setAttribute('data-y', y);
+                }
+            }
+        });
+
+        function hexToRgb(hex) {
+            const cleaned = hex.replace('#', '');
+            const num = Number.parseInt(cleaned, 16);
+            return {
+                r: (num >> 16) & 255,
+                g: (num >> 8) & 255,
+                b: num & 255
+            };
+        }
+
+        function rgba(hex, alpha) {
+            const { r, g, b } = hexToRgb(hex);
+            return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+        }
+
+        function roundRect(ctx, x, y, width, height, radius) {
+            const r = Math.min(radius, width / 2, height / 2);
+            ctx.beginPath();
+            ctx.moveTo(x + r, y);
+            ctx.lineTo(x + width - r, y);
+            ctx.quadraticCurveTo(x + width, y, x + width, y + r);
+            ctx.lineTo(x + width, y + height - r);
+            ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+            ctx.lineTo(x + r, y + height);
+            ctx.quadraticCurveTo(x, y + height, x, y + height - r);
+            ctx.lineTo(x, y + r);
+            ctx.quadraticCurveTo(x, y, x + r, y);
+            ctx.closePath();
+        }
+
+        function loadImage(src) {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                img.onload = () => resolve(img);
+                img.onerror = reject;
+                img.src = src;
+            });
+        }
+
+        async function buildReportImage() {
+            const photoCards = [...document.querySelectorAll('#board .polaroid')]
+                .map((card) => {
+                    const img = card.querySelector('img');
+                    return {
+                        src: img ? img.src : ''
+                    };
+                })
+                .filter((item) => item.src);
+
+            const reportWidth = 1080;
+            const padding = 56;
+            const topSectionHeight = 260;
+            const cardGap = 28;
+            const cardWidth = (reportWidth - padding * 2 - cardGap) / 2;
+            const imagePadding = 18;
+            const imageWidth = cardWidth - imagePadding * 2;
+
+            const loadedImages = await Promise.all(photoCards.map((item) => loadImage(item.src)));
+            const columnHeights = [topSectionHeight, topSectionHeight];
+            const placements = loadedImages.map((img) => {
+                const naturalWidth = img.naturalWidth || img.width || imageWidth;
+                const naturalHeight = img.naturalHeight || img.height || imageWidth;
+                const imageHeight = Math.max(120, Math.round(imageWidth * (naturalHeight / naturalWidth)));
+                const cardHeight = imagePadding * 2 + imageHeight;
+                const col = columnHeights[0] <= columnHeights[1] ? 0 : 1;
+                const x = padding + col * (cardWidth + cardGap);
+                const y = columnHeights[col];
+                columnHeights[col] += cardHeight + cardGap;
+
+                return {
+                    img,
+                    x,
+                    y,
+                    cardHeight,
+                    imageX: x + imagePadding,
+                    imageY: y + imagePadding,
+                    imageW: imageWidth,
+                    imageH: imageHeight
+                };
+            });
+
+            const masonryBottom = placements.length > 0
+                ? Math.max(columnHeights[0], columnHeights[1]) - cardGap
+                : topSectionHeight;
+            const reportHeight = Math.max(topSectionHeight + padding, masonryBottom + padding);
+
+            const canvas = document.createElement('canvas');
+            canvas.width = reportWidth;
+            canvas.height = reportHeight;
+            const ctx = canvas.getContext('2d');
+
+            const baseHex = currentColor?.hex || '#4ECDC4';
+            const bgGradient = ctx.createLinearGradient(0, 0, 0, reportHeight);
+            bgGradient.addColorStop(0, '#FFFFFF');
+            bgGradient.addColorStop(0.45, rgba(baseHex, 0.2));
+            bgGradient.addColorStop(1, rgba(baseHex, 0.34));
+            ctx.fillStyle = bgGradient;
+            ctx.fillRect(0, 0, reportWidth, reportHeight);
+
+            ctx.fillStyle = 'rgba(255,255,255,0.75)';
+            roundRect(ctx, padding, 46, reportWidth - padding * 2, topSectionHeight - 80, 28);
+            ctx.fill();
+
+            ctx.fillStyle = '#111827';
+            ctx.font = '700 54px "Nunito", sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('COLOR WALK WITH ME', reportWidth / 2, 130);
+            ctx.textAlign = 'left';
+
+            ctx.fillStyle = '#374151';
+            ctx.font = '600 36px "Caveat", cursive';
+            ctx.fillText(currentColor?.name || "Today's Color", padding + 32, 180);
+
+            ctx.fillStyle = rgba(baseHex, 0.95);
+            ctx.font = '700 28px "Nunito", sans-serif';
+            ctx.fillText(currentColor?.hex || baseHex, padding + 32, 220);
+
+            const generatedAt = new Date().toLocaleString();
+            ctx.fillStyle = '#6B7280';
+            ctx.font = '500 24px "Nunito", sans-serif';
+            ctx.textAlign = 'right';
+            ctx.fillText(generatedAt, reportWidth - padding - 20, 220);
+            ctx.textAlign = 'left';
+
+            placements.forEach((card) => {
+                ctx.save();
+                ctx.shadowColor = 'rgba(17,24,39,0.18)';
+                ctx.shadowBlur = 16;
+                ctx.shadowOffsetY = 8;
+                ctx.fillStyle = '#FFFFFF';
+                roundRect(ctx, card.x, card.y, cardWidth, card.cardHeight, 22);
+                ctx.fill();
+                ctx.restore();
+
+                ctx.save();
+                roundRect(ctx, card.imageX, card.imageY, card.imageW, card.imageH, 16);
+                ctx.clip();
+                ctx.drawImage(card.img, card.imageX, card.imageY, card.imageW, card.imageH);
+                ctx.restore();
+            });
+
+            return canvas.toDataURL('image/jpeg', 0.93);
+        }
+
+        document.getElementById('finish-btn').addEventListener('click', async () => {
+            const boardCount = document.querySelectorAll('#board .polaroid').length;
+            if (boardCount === 0) {
+                alert('先拍几张照片吧！📷');
+                return;
+            }
+
+            if (isGeneratingReport) return;
+            isGeneratingReport = true;
+
+            const finishBtn = document.getElementById('finish-btn');
+            finishBtn.disabled = true;
+            const originalLabel = finishBtn.innerText;
+            finishBtn.innerText = '生成中...';
+
+            confetti({
+                particleCount: 100,
+                spread: 70,
+                origin: { y: 0.6 }
+            });
+
+            try {
+                const imgUrl = await buildReportImage();
+                const resultImg = document.getElementById('result-img');
+                resultImg.src = imgUrl;
+
+                const overlay = document.getElementById('result-overlay');
+                overlay.classList.remove('hidden');
+                overlay.classList.add('flex');
+                gsap.from(overlay, { opacity: 0, duration: 0.4 });
+            } catch (error) {
+                console.error(error);
+                alert('生成报告失败，请重试');
+            } finally {
+                isGeneratingReport = false;
+                finishBtn.disabled = false;
+                finishBtn.innerText = originalLabel;
+            }
+        });
+    </script>
+</body>
+</html>
